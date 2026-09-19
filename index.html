@@ -1,0 +1,894 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Обмер — план в 3D с замерами</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=Unbounded:wght@600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#13202B; --muted:#586A75; --line:#C5D0D5; --panel:#F6F8F8; --stage:#DCE4E7;
+  --wall:#0E7C7B; --dim:#B4145A; --focus:#1D4ED8;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{font:14px/1.45 "Golos Text",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--stage);display:flex;flex-direction:column;overflow:hidden}
+button,input{font:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;background:var(--ink);color:#EAF1F3;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:12px}
+.mark{font:600 20px/1 "Unbounded","Golos Text",system-ui,sans-serif;letter-spacing:.01em}
+.tag{color:#9FB3BD;font-size:13px}
+.top-actions{display:flex;gap:8px}
+
+.btn{border:1px solid var(--line);background:#fff;color:var(--ink);padding:7px 12px;border-radius:6px;cursor:pointer}
+.btn:hover:not(:disabled){border-color:var(--ink)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--wall);border-color:var(--wall);color:#fff}
+.btn[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
+.top .btn{background:transparent;color:#EAF1F3;border-color:rgba(255,255,255,.35)}
+.top .btn:hover:not(:disabled){border-color:#fff}
+
+.app{flex:1;min-height:0;display:grid;grid-template-columns:344px 1fr}
+.side{overflow:auto;background:var(--panel);border-right:1px solid var(--line)}
+.step{padding:14px 16px;border-bottom:1px solid var(--line)}
+.step h2{margin:0 0 6px;font-size:14px;font-weight:600;display:flex;align-items:baseline;gap:8px}
+.step h2 .n{color:var(--muted);font-weight:500;font-variant-numeric:tabular-nums}
+.step h2 .st{margin-left:auto;font-weight:400;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.step.done h2 .st{color:var(--wall)}
+.step p{margin:0 0 8px;color:var(--muted)}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin:8px 0 0}
+.field{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--muted)}
+.field input[type=number],.field input[type=text]{width:88px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;color:var(--ink);background:#fff}
+.field input[type=range]{width:100%}
+.check{display:flex;gap:6px;align-items:center;margin-top:8px;color:var(--ink)}
+
+.item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px dashed var(--line);font-variant-numeric:tabular-nums}
+.item .lab{color:var(--muted)}
+.item .val{margin-left:auto;color:var(--dim);font-weight:500}
+.item input[type=text]{flex:1;min-width:0;width:auto;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink)}
+.item .x{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:16px;line-height:1;padding:2px 6px}
+.item .x:hover{color:var(--dim)}
+.summary{margin-top:10px;color:var(--ink);font-variant-numeric:tabular-nums}
+.summary div{display:flex;justify-content:space-between;padding:2px 0}
+.summary span:last-child{color:var(--dim);font-weight:500}
+.fine{font-size:12px;color:var(--muted);margin-top:6px}
+
+.stage{position:relative;display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);min-width:0;min-height:0}
+.pane{position:relative;min-width:0;min-height:0;background:var(--stage);overflow:hidden}
+#cv2d{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+.empty{position:absolute;inset:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;border:1.5px dashed #9FB0B8;border-radius:10px;color:var(--muted);padding:16px}
+.empty strong{color:var(--ink);font-size:16px;font-weight:600}
+.hint{position:absolute;left:12px;right:56px;bottom:12px;background:rgba(19,32,43,.92);color:#fff;padding:8px 12px;border-radius:6px;font-size:13px}
+.note{position:absolute;left:12px;top:12px;max-width:70%;background:#fff;border:1px solid var(--line);border-left:3px solid var(--wall);padding:6px 10px;border-radius:6px;font-size:13px;box-shadow:0 2px 10px rgba(19,32,43,.12)}
+.zoom{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:4px}
+.zoom .btn{width:34px;height:34px;padding:0;font-size:16px}
+
+#host3d{position:absolute;inset:0}
+#host3d canvas{display:block}
+#labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.tag3{position:absolute;left:0;top:0;padding:2px 6px;background:#fff;color:var(--dim);border:1px solid var(--dim);border-radius:4px;font-size:12px;line-height:1.25;font-variant-numeric:tabular-nums;white-space:nowrap;text-align:center}
+.tag3 b{display:block;color:var(--ink);font-weight:600}
+.view-btns{position:absolute;left:12px;bottom:12px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.view-btns .chk{display:flex;gap:6px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer}
+.empty3{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);padding:20px;text-align:center}
+
+.tabs{display:none}
+@media (max-width:980px){
+  .app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .side{max-height:40vh;border-right:0;border-bottom:1px solid var(--line)}
+  .stage{grid-template-columns:1fr}
+  .stage[data-view="plan"] .view3d{display:none}
+  .stage[data-view="v3d"] .plan{display:none}
+  .tabs{display:flex;position:absolute;z-index:5;left:50%;transform:translateX(-50%);top:10px;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .tabs button{border:0;background:transparent;padding:6px 14px;cursor:pointer}
+  .tabs button[aria-pressed="true"]{background:var(--ink);color:#fff}
+  .note{top:52px}
+  .zoom{top:52px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand"><span class="mark">Обмер</span><span class="tag">план → 3D с замерами</span></div>
+  <div class="top-actions">
+    <button class="btn" id="btnJson" disabled>Скачать JSON</button>
+    <button class="btn" id="btnPng" disabled>Снимок 3D</button>
+  </div>
+</header>
+
+<div class="app">
+  <aside class="side" aria-label="Шаги">
+
+    <section class="step" id="step1">
+      <h2><span class="n">1</span>Загрузка<span class="st" id="stLoad">—</span></h2>
+      <p>Фото, скан или PDF. Файл можно перетащить прямо в окно.</p>
+      <div class="row">
+        <button class="btn primary" id="btnOpen">Выбрать файл</button>
+        <button class="btn" id="btnDemo">Демо-план</button>
+        <input id="file" type="file" accept="image/*,application/pdf" hidden>
+      </div>
+      <div class="row" id="pageWrap" hidden>
+        <label class="field">Страница PDF<input id="inPage" type="number" min="1" value="1"></label>
+      </div>
+    </section>
+
+    <section class="step" id="step2">
+      <h2><span class="n">2</span>Выпрямить фото<span class="st" id="stPersp">0/4</span></h2>
+      <p>Если план снят под углом: отметьте 4 угла листа — с левого верхнего, по часовой стрелке.</p>
+      <div class="row">
+        <button class="btn" data-tool="persp" aria-pressed="false">Отметить углы</button>
+        <button class="btn" id="btnWarp">Выпрямить</button>
+        <button class="btn" id="btnPerspReset">Сбросить</button>
+      </div>
+    </section>
+
+    <section class="step" id="step3">
+      <h2><span class="n">3</span>Масштаб<span class="st" id="stScale">не задан</span></h2>
+      <p>Отметьте два конца отрезка, длину которого знаете, например размерной линии.</p>
+      <div class="row">
+        <button class="btn" data-tool="scale" aria-pressed="false">Отметить отрезок</button>
+        <label class="field">Длина, м<input id="inScaleM" type="number" min="0.01" step="0.01" value="1"></label>
+        <button class="btn" id="btnScale">Применить</button>
+      </div>
+    </section>
+
+    <section class="step" id="step4">
+      <h2><span class="n">4</span>Стены<span class="st" id="stWalls">—</span></h2>
+      <p>Ищу стены по тёмным сплошным линиям. Неточности можно поправить вручную.</p>
+      <label class="field">Порог яркости: <span id="thrVal">128</span>
+        <input id="inThr" type="range" min="20" max="240" value="128"></label>
+      <label class="check"><input type="checkbox" id="inAdapt"> Неровное освещение (фото)</label>
+      <div class="row">
+        <label class="field">Мин. толщина, см<input id="inMin" type="number" min="1" value="8"></label>
+        <label class="field">Макс. толщина, см<input id="inMax" type="number" min="5" value="45"></label>
+        <label class="field">Мин. длина, см<input id="inLen" type="number" min="10" value="60"></label>
+      </div>
+      <div class="row">
+        <label class="field">Потолок, м<input id="inH" type="number" min="2" max="6" step="0.1" value="2.7"></label>
+        <label class="field">Новая стена, см<input id="inNew" type="number" min="5" value="12"></label>
+      </div>
+      <div class="row">
+        <button class="btn primary" id="btnDetect">Найти стены</button>
+        <button class="btn" data-tool="addwall" aria-pressed="false">Добавить</button>
+        <button class="btn" data-tool="delwall" aria-pressed="false">Удалить</button>
+        <button class="btn" id="btnClearWalls">Очистить</button>
+      </div>
+      <p class="fine">Двери и окна пока считаются проёмами: стена просто прерывается.</p>
+    </section>
+
+    <section class="step" id="step5">
+      <h2><span class="n">5</span>Замеры<span class="st" id="stMeasure">—</span></h2>
+      <div class="row">
+        <button class="btn" data-tool="ruler" aria-pressed="false">Линейка</button>
+        <button class="btn" data-tool="room" aria-pressed="false">Комната</button>
+        <button class="btn" id="btnCloseRoom">Замкнуть</button>
+      </div>
+      <div id="measures"></div>
+      <div class="summary" id="summary"></div>
+    </section>
+
+  </aside>
+
+  <main class="stage" id="stage" data-view="plan">
+    <div class="tabs" role="group" aria-label="Вид">
+      <button data-v="plan" aria-pressed="true">План</button>
+      <button data-v="v3d" aria-pressed="false">3D</button>
+    </div>
+
+    <section class="pane plan" id="pane2d" aria-label="План">
+      <canvas id="cv2d"></canvas>
+      <div class="empty" id="empty">
+        <strong>Загрузите план квартиры</strong>
+        <span>Перетащите сюда фото, скан или PDF — или откройте демо-план</span>
+      </div>
+      <div class="note" id="note" hidden></div>
+      <div class="zoom">
+        <button class="btn" id="zIn" aria-label="Приблизить">+</button>
+        <button class="btn" id="zOut" aria-label="Отдалить">−</button>
+        <button class="btn" id="zFit" aria-label="Вписать в окно">⤢</button>
+      </div>
+      <div class="hint" id="hint" aria-live="polite"></div>
+    </section>
+
+    <section class="pane view3d" id="pane3d" aria-label="3D-вид">
+      <div id="host3d"></div>
+      <div id="labels"></div>
+      <div class="view-btns">
+        <button class="btn" id="btnIso">Изометрия</button>
+        <button class="btn" id="btnTop">Сверху</button>
+        <label class="chk"><input type="checkbox" id="chkPlan"> План на полу</label>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+'use strict';
+
+/* =====================================================================
+   ЧАСТЬ 1. Чистая логика без DOM (её можно запускать и тестировать в Node)
+   ===================================================================== */
+// PURE:START
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+
+function polyArea(p){ let s=0; for(let i=0;i<p.length;i++){const a=p[i],b=p[(i+1)%p.length]; s+=a.x*b.y-b.x*a.y;} return Math.abs(s)/2; }
+function polyPerim(p){ let s=0; for(let i=0;i<p.length;i++) s+=dist(p[i],p[(i+1)%p.length]); return s; }
+
+/* Порог Оцу: автоматически разделяет «тёмные линии» и «светлый фон» */
+function otsu(gray){
+  const hist=new Uint32Array(256); for(let i=0;i<gray.length;i++) hist[gray[i]]++;
+  const total=gray.length; let sum=0; for(let t=0;t<256;t++) sum+=t*hist[t];
+  let sumB=0,wB=0,best=-1,thr=128;
+  for(let t=0;t<256;t++){
+    wB+=hist[t]; if(!wB) continue;
+    const wF=total-wB; if(!wF) break;
+    sumB+=t*hist[t];
+    const mB=sumB/wB, mF=(sum-sumB)/wF, v=wB*wF*(mB-mF)*(mB-mF);
+    if(v>best){best=v;thr=t;}
+  }
+  return thr;
+}
+
+/* Бинаризация: 1 = тёмный пиксель. Адаптивный режим сравнивает пиксель со средним
+   в окне (интегральное изображение) — переживает неровный свет на фото. */
+function binarize(gray,w,h,o){
+  const bin=new Uint8Array(w*h);
+  if(!o.adaptive){ for(let i=0;i<bin.length;i++) bin[i]=gray[i]<=o.thr?1:0; return bin; }
+  const W=w+1, integ=new Float64Array(W*(h+1));
+  for(let y=0;y<h;y++){ let row=0; for(let x=0;x<w;x++){ row+=gray[y*w+x]; integ[(y+1)*W+x+1]=integ[y*W+x+1]+row; } }
+  const r=o.radius, c=o.c;
+  for(let y=0;y<h;y++){
+    const y0=Math.max(0,y-r), y1=Math.min(h,y+r+1);
+    for(let x=0;x<w;x++){
+      const x0=Math.max(0,x-r), x1=Math.min(w,x+r+1);
+      const s=integ[y1*W+x1]-integ[y0*W+x1]-integ[y1*W+x0]+integ[y0*W+x0];
+      const mean=s/((x1-x0)*(y1-y0));
+      bin[y*w+x]=gray[y*w+x]<mean-c?1:0;
+    }
+  }
+  return bin;
+}
+
+/* Маска «длинных горизонтальных серий»: оставляем только пиксели,
+   лежащие в тёмной серии длиной >= minLen (щели до gap px считаем шумом скана). */
+function runMask(bin,w,h,minLen,gap){
+  const mask=new Uint8Array(w*h);
+  for(let y=0;y<h;y++){
+    const o=y*w; let start=-1,last=-1;
+    for(let x=0;x<w;x++){
+      if(bin[o+x]){ if(start<0) start=x; last=x; }
+      else if(start>=0 && x-last>gap){ if(last-start+1>=minLen) mask.fill(1,o+start,o+last+1); start=-1; }
+    }
+    if(start>=0 && last-start+1>=minLen) mask.fill(1,o+start,o+last+1);
+  }
+  return mask;
+}
+
+/* Связные компоненты (4-связность), для каждой — ограничивающий прямоугольник */
+function components(mask,w,h){
+  const out=[], q=new Int32Array(w*h);
+  for(let s=0;s<mask.length;s++){
+    if(!mask[s]) continue;
+    let head=0,tail=0; q[tail++]=s; mask[s]=0;
+    let minx=w,maxx=-1,miny=h,maxy=-1,cnt=0;
+    while(head<tail){
+      const p=q[head++], y=(p/w)|0, x=p-y*w; cnt++;
+      if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y;
+      if(x>0&&mask[p-1]){mask[p-1]=0;q[tail++]=p-1;}
+      if(x<w-1&&mask[p+1]){mask[p+1]=0;q[tail++]=p+1;}
+      if(y>0&&mask[p-w]){mask[p-w]=0;q[tail++]=p-w;}
+      if(y<h-1&&mask[p+w]){mask[p+w]=0;q[tail++]=p+w;}
+    }
+    out.push({x:minx,y:miny,w:maxx-minx+1,h:maxy-miny+1,cnt});
+  }
+  return out;
+}
+
+function transpose(a,w,h){ const t=new Uint8Array(w*h); for(let y=0;y<h;y++)for(let x=0;x<w;x++) t[x*h+y]=a[y*w+x]; return t; }
+function contains(b,a,t){ return a.x>=b.x-t&&a.y>=b.y-t&&a.x+a.w<=b.x+b.w+t&&a.y+a.h<=b.y+b.h+t; }
+function dedupe(r){ return r.filter((a,i)=>!r.some((b,j)=>j!==i&&contains(b,a,2)&&(!contains(a,b,2)||j<i))); }
+
+/* Поиск стен: горизонтальные и вертикальные толстые тёмные прямоугольники.
+   o: {thr,adaptive,minThick,maxThick,minLen,gap} — всё в пикселях. */
+function detectWalls(gray,w,h,o){
+  const minLen=Math.max(o.minLen,Math.round(o.maxThick*1.3)); // иначе толстая стена «видна» в обоих проходах
+  const bin=binarize(gray,w,h,{thr:o.thr,adaptive:o.adaptive,radius:Math.min(200,Math.round(o.maxThick*1.5)+10),c:o.c==null?30:o.c});
+  const ok=(len,th,cnt)=>len>=minLen&&th>=o.minThick&&th<=o.maxThick&&cnt/(len*th)>=0.6;
+  const res=[];
+  for(const c of components(runMask(bin,w,h,minLen,o.gap),w,h))
+    if(ok(c.w,c.h,c.cnt)) res.push({x:c.x,y:c.y,w:c.w,h:c.h});
+  // вертикальные стены = то же самое на транспонированном изображении
+  for(const c of components(runMask(transpose(bin,w,h),h,w,minLen,o.gap),h,w))
+    if(ok(c.w,c.h,c.cnt)) res.push({x:c.y,y:c.x,w:c.h,h:c.w});
+  return dedupe(res);
+}
+
+/* Гомография по 4 точкам (для выпрямления фото) */
+function gauss(A,b){
+  const n=b.length;
+  for(let i=0;i<n;i++){
+    let p=i; for(let r=i+1;r<n;r++) if(Math.abs(A[r][i])>Math.abs(A[p][i])) p=r;
+    [A[i],A[p]]=[A[p],A[i]]; [b[i],b[p]]=[b[p],b[i]];
+    for(let r=i+1;r<n;r++){ const f=A[r][i]/A[i][i]; for(let c=i;c<n;c++) A[r][c]-=f*A[i][c]; b[r]-=f*b[i]; }
+  }
+  const x=new Array(n);
+  for(let i=n-1;i>=0;i--){ let s=b[i]; for(let c=i+1;c<n;c++) s-=A[i][c]*x[c]; x[i]=s/A[i][i]; }
+  return x;
+}
+function solveHomography(src,dst){
+  const A=[],b=[];
+  for(let i=0;i<4;i++){
+    const {x,y}=src[i], {x:u,y:v}=dst[i];
+    A.push([x,y,1,0,0,0,-u*x,-u*y]); b.push(u);
+    A.push([0,0,0,x,y,1,-v*x,-v*y]); b.push(v);
+  }
+  const h=gauss(A,b); return [h[0],h[1],h[2],h[3],h[4],h[5],h[6],h[7],1];
+}
+function applyH(H,x,y){ const d=H[6]*x+H[7]*y+H[8]; return {x:(H[0]*x+H[1]*y+H[2])/d,y:(H[3]*x+H[4]*y+H[5])/d}; }
+
+/* quad: 4 угла листа на исходнике (ЛВ, ПВ, ПН, ЛН) → прямоугольник ow×oh */
+function warpRGBA(src,sw,sh,quad,ow,oh){
+  const rect=[{x:0,y:0},{x:ow-1,y:0},{x:ow-1,y:oh-1},{x:0,y:oh-1}];
+  const H=solveHomography(rect,quad);
+  const out=new Uint8ClampedArray(ow*oh*4);
+  for(let y=0;y<oh;y++)for(let x=0;x<ow;x++){
+    const p=applyH(H,x,y), o=(y*ow+x)*4;
+    if(!(p.x>=0&&p.y>=0&&p.x<=sw-1&&p.y<=sh-1)){ out[o]=out[o+1]=out[o+2]=255; out[o+3]=255; continue; }
+    const x0=Math.floor(p.x),y0=Math.floor(p.y),x1=Math.min(x0+1,sw-1),y1=Math.min(y0+1,sh-1),fx=p.x-x0,fy=p.y-y0;
+    for(let c=0;c<3;c++){
+      const a=src[(y0*sw+x0)*4+c],b=src[(y0*sw+x1)*4+c],d=src[(y1*sw+x0)*4+c],e=src[(y1*sw+x1)*4+c];
+      out[o+c]=(a*(1-fx)+b*fx)*(1-fy)+(d*(1-fx)+e*fx)*fy;
+    }
+    out[o+3]=255;
+  }
+  return out;
+}
+
+/* Демо-квартира 12×8 м: стены в метрах [x,y,w,h] с проёмами под окна и двери */
+function demoWallsM(){
+  const R=[], T=0.3, t=0.15;
+  const hs=(y,th,segs)=>segs.forEach(([a,b])=>R.push([a,y,b-a,th]));
+  const vs=(x,th,segs)=>segs.forEach(([a,b])=>R.push([x,a,th,b-a]));
+  hs(0,T,[[0,2.0],[3.6,7.0],[8.6,12]]);
+  hs(7.7,T,[[0,3.0],[4.6,12]]);
+  vs(0,T,[[0,2.0],[3.4,8]]);
+  vs(11.7,T,[[0,8]]);
+  vs(5.85,t,[[0.3,1.5],[2.4,5.4],[6.3,7.7]]);
+  hs(4.0,t,[[6.0,8.0],[8.9,11.7]]);
+  vs(9.0,t,[[4.15,5.0],[5.9,7.7]]);
+  hs(5.0,t,[[0.3,2.0],[2.9,5.85]]);
+  return R;
+}
+function demoRoomsM(){
+  const q=(n,x0,y0,x1,y1)=>({name:n,pts:[[x0,y0],[x1,y0],[x1,y1],[x0,y1]]});
+  return [q('Гостиная',0.3,0.3,5.85,5.0),q('Спальня',6.0,0.3,11.7,4.0),q('Кухня',6.0,4.15,9.0,7.7),q('Санузел',9.15,4.15,11.7,7.7),q('Прихожая',0.3,5.15,5.85,7.7)];
+}
+// PURE:END
+
+/* =====================================================================
+   ЧАСТЬ 2. Приложение: состояние, загрузка, 2D-редактор, 3D, замеры
+   ===================================================================== */
+const $=id=>document.getElementById(id);
+function el(tag,cls,text){const e=document.createElement(tag); if(cls)e.className=cls; if(text!=null)e.textContent=text; return e;}
+const fmt=(n,d=2)=>n.toFixed(d).replace('.',',');
+const MAX_SIDE=1800;
+const PDF_WORKER='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+const S={
+  canvas:null,w:0,h:0,gray:null,name:'',
+  scale:null,            // пикселей в метре
+  scalePts:[],persp:[],  // точки шагов 2 и 3
+  walls:[],rooms:[],rulers:[],
+  tool:'pan',pending:null,roomPts:[],mouse:null,drag:null,needFit:false,
+  pdf:null,pdfName:''
+};
+
+const HINTS={
+  pan:'Тяните план мышью, колесо — масштаб. Правая кнопка тоже двигает план.',
+  persp:'Отметьте 4 угла листа: левый верхний, правый верхний, правый нижний, левый нижний.',
+  scale:'Кликните по двум концам отрезка известной длины, затем введите её в метрах.',
+  addwall:'Протяните линию вдоль оси стены — она станет стеной заданной толщины.',
+  delwall:'Кликните по стене, которую нужно убрать.',
+  ruler:'Кликните по двум точкам — покажу расстояние.',
+  room:'Кликайте по углам комнаты. Чтобы замкнуть, кликните по первой точке или нажмите «Замкнуть».'
+};
+
+let noteTimer=null;
+function note(msg){ const n=$('note'); n.textContent=msg; n.hidden=false; clearTimeout(noteTimer); noteTimer=setTimeout(()=>{n.hidden=true;},5000); }
+const wallH=()=>clamp(parseFloat($('inH').value)||2.7,2,6);
+
+/* ---------- Загрузка файла ---------- */
+function setSource(src,w0,h0,name,keepScale){
+  const k=Math.min(1,MAX_SIDE/Math.max(w0,h0)), w=Math.round(w0*k), h=Math.round(h0*k);
+  const c=document.createElement('canvas'); c.width=w; c.height=h;
+  const g=c.getContext('2d',{willReadFrequently:true});
+  g.fillStyle='#fff'; g.fillRect(0,0,w,h); g.drawImage(src,0,0,w,h);
+  const id=g.getImageData(0,0,w,h).data, gray=new Uint8ClampedArray(w*h);
+  for(let i=0,j=0;i<gray.length;i++,j+=4) gray[i]=(id[j]*299+id[j+1]*587+id[j+2]*114)/1000;
+  Object.assign(S,{canvas:c,w,h,gray,name,walls:[],rooms:[],rulers:[],scalePts:[],persp:[],pending:null,roomPts:[],needFit:true});
+  if(!keepScale) S.scale=null;
+  const t=otsu(gray); $('inThr').value=t; $('thrVal').textContent=t;
+  setTool('pan',true);
+  changed();
+}
+
+async function loadFile(f){
+  if(!f) return;
+  try{
+    if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){
+      if(typeof pdfjsLib==='undefined') throw new Error('Не загрузился pdf.js — проверьте интернет.');
+      pdfjsLib.GlobalWorkerOptions.workerSrc=PDF_WORKER;
+      S.pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise;
+      S.pdfName=f.name;
+      $('inPage').max=S.pdf.numPages; $('inPage').value=1; $('pageWrap').hidden=S.pdf.numPages<2;
+      await renderPdfPage(1);
+    }else{
+      $('pageWrap').hidden=true;
+      const url=URL.createObjectURL(f), img=new Image();
+      await new Promise((ok,fail)=>{img.onload=ok;img.onerror=()=>fail(new Error('Не удалось открыть изображение.'));img.src=url;});
+      setSource(img,img.naturalWidth,img.naturalHeight,f.name);
+      URL.revokeObjectURL(url);
+    }
+  }catch(err){ note(err.message||'Не удалось открыть файл.'); }
+}
+async function renderPdfPage(n){
+  const page=await S.pdf.getPage(n), v0=page.getViewport({scale:1});
+  const vp=page.getViewport({scale:MAX_SIDE/Math.max(v0.width,v0.height)});
+  const c=document.createElement('canvas'); c.width=Math.round(vp.width); c.height=Math.round(vp.height);
+  const g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,c.width,c.height);
+  await page.render({canvasContext:g,viewport:vp}).promise;
+  setSource(c,c.width,c.height,S.pdfName+', стр. '+n);
+}
+
+/* Демо-план рисуем на canvas сами — можно показывать без файлов */
+function loadDemo(){
+  const U=100,O=100,c=document.createElement('canvas'); c.width=1400; c.height=1000;
+  const g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,1400,1000);
+  g.fillStyle='#161616';
+  for(const [x,y,w,h] of demoWallsM()) g.fillRect(O+x*U,O+y*U,w*U,h*U);
+  g.strokeStyle='#161616'; g.lineWidth=2;
+  const line=(x1,y1,x2,y2)=>{g.beginPath();g.moveTo(O+x1*U,O+y1*U);g.lineTo(O+x2*U,O+y2*U);g.stroke();};
+  // окна: две тонкие линии внутри проёма
+  [[2.0,3.6],[7.0,8.6]].forEach(([a,b])=>{line(a+.04,.1,b-.04,.1);line(a+.04,.2,b-.04,.2);});
+  line(3.04,7.8,4.56,7.8); line(3.04,7.9,4.56,7.9);
+  line(.1,2.04,.1,3.36); line(.2,2.04,.2,3.36);
+  // размерные линии (по ним можно проверить масштаб)
+  g.lineWidth=1; g.fillStyle='#333'; g.font='22px "Golos Text",sans-serif'; g.textAlign='center';
+  g.beginPath(); g.moveTo(O,50); g.lineTo(O+12*U,50); g.moveTo(O,42); g.lineTo(O,58); g.moveTo(O+12*U,42); g.lineTo(O+12*U,58); g.stroke();
+  g.fillText('12 000',O+6*U,40);
+  g.beginPath(); g.moveTo(1350,O); g.lineTo(1350,O+8*U); g.moveTo(1342,O); g.lineTo(1358,O); g.moveTo(1342,O+8*U); g.lineTo(1358,O+8*U); g.stroke();
+  g.save(); g.translate(1338,O+4*U); g.rotate(-Math.PI/2); g.fillText('8 000',0,0); g.restore();
+  g.fillStyle='#555'; g.font='26px "Golos Text",sans-serif';
+  [['Гостиная',3.1,2.7],['Спальня',8.85,2.2],['Кухня',7.5,6.0],['Санузел',10.4,6.0],['Прихожая',3.1,6.5]].forEach(([t,x,y])=>g.fillText(t,O+x*U,O+y*U));
+  setSource(c,1400,1000,'демо-план',false);
+  S.scale=U; // масштаб демо известен: 100 px = 1 м
+  S.rooms=demoRoomsM().map(r=>({name:r.name,pts:r.pts.map(([x,y])=>({x:O+x*U,y:O+y*U}))}));
+  changed(); note('Демо загружено: масштаб уже задан. Нажмите «Найти стены».');
+}
+
+/* ---------- Выпрямление перспективы ---------- */
+function applyPerspective(){
+  const q=S.persp; if(q.length<4) return note('Отметьте все 4 угла листа.');
+  let ow=Math.round(Math.max(dist(q[0],q[1]),dist(q[3],q[2]))), oh=Math.round(Math.max(dist(q[0],q[3]),dist(q[1],q[2])));
+  const k=Math.min(1,MAX_SIDE/Math.max(ow,oh)); ow=Math.max(50,Math.round(ow*k)); oh=Math.max(50,Math.round(oh*k));
+  const src=S.canvas.getContext('2d').getImageData(0,0,S.w,S.h);
+  const out=warpRGBA(src.data,S.w,S.h,q,ow,oh);
+  const c=document.createElement('canvas'); c.width=ow; c.height=oh;
+  c.getContext('2d').putImageData(new ImageData(out,ow,oh),0,0);
+  setSource(c,ow,oh,S.name.replace(' (выпрямлено)','')+' (выпрямлено)',false);
+  note('Фото выпрямлено. Теперь задайте масштаб.');
+}
+
+/* ---------- Инструменты ---------- */
+const NEEDS_SCALE=new Set(['ruler','room','addwall']);
+function setTool(t,silent){
+  if(!silent){
+    if(S.tool===t) t='pan';
+    if(NEEDS_SCALE.has(t)&&!S.scale){ note('Сначала задайте масштаб (шаг 3).'); t='pan'; }
+    if(!S.canvas&&t!=='pan'){ note('Сначала загрузите план.'); t='pan'; }
+  }
+  if(t==='persp'&&S.persp.length>=4) S.persp=[];
+  if(t==='scale') S.scalePts=[];
+  S.tool=t; S.pending=null; if(t!=='room') S.roomPts=[];
+  document.querySelectorAll('[data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));
+  $('cv2d').style.cursor=t==='pan'?'grab':'crosshair';
+  $('hint').textContent=HINTS[t];
+  updateUI(); draw2d();
+}
+
+function toolClick(pi,p){
+  switch(S.tool){
+    case 'persp': if(S.persp.length>=4) S.persp=[]; S.persp.push(pi); updateUI(); break;
+    case 'scale':
+      if(S.scalePts.length>=2) S.scalePts=[];
+      S.scalePts.push(pi);
+      if(S.scalePts.length===2){ $('inScaleM').focus(); $('inScaleM').select(); note('Введите реальную длину отрезка и нажмите «Применить».'); }
+      break;
+    case 'addwall': S.drag={t:'wall',a:pi}; break;
+    case 'delwall': {
+      const tol=4/V.k;
+      for(let i=S.walls.length-1;i>=0;i--){ const r=S.walls[i];
+        if(pi.x>=r.x-tol&&pi.x<=r.x+r.w+tol&&pi.y>=r.y-tol&&pi.y<=r.y+r.h+tol){ S.walls.splice(i,1); changed(); return; } }
+      break; }
+    case 'ruler':
+      if(!S.pending) S.pending=pi; else { S.rulers.push({a:S.pending,b:pi}); S.pending=null; changed(); return; }
+      break;
+    case 'room':
+      if(S.roomPts.length>=3){ const f=toScreen(S.roomPts[0].x,S.roomPts[0].y); if(Math.hypot(f.x-p.x,f.y-p.y)<12){ finishRoom(); return; } }
+      S.roomPts.push(pi); break;
+  }
+  draw2d();
+}
+function finishWall(a,b){
+  if(!b) return;
+  const t=Math.max(2,(parseFloat($('inNew').value)||12)/100*S.scale), dx=b.x-a.x, dy=b.y-a.y;
+  if(Math.hypot(dx,dy)<6/V.k) return;
+  S.walls.push(Math.abs(dx)>=Math.abs(dy)
+    ?{x:Math.min(a.x,b.x),y:a.y-t/2,w:Math.abs(dx),h:t}
+    :{x:a.x-t/2,y:Math.min(a.y,b.y),w:t,h:Math.abs(dy)});
+  changed();
+}
+function finishRoom(){
+  if(S.roomPts.length<3) return note('Нужно минимум 3 точки.');
+  S.rooms.push({name:'Комната '+(S.rooms.length+1),pts:S.roomPts}); S.roomPts=[]; changed();
+}
+
+/* ---------- 2D-холст ---------- */
+const cv=$('cv2d'), ctx=cv.getContext('2d');
+let cw=0,ch=0,dpr=1; const V={k:1,ox:0,oy:0};
+const toScreen=(x,y)=>({x:x*V.k+V.ox,y:y*V.k+V.oy});
+const toImg=(sx,sy)=>({x:(sx-V.ox)/V.k,y:(sy-V.oy)/V.k});
+const cpos=e=>{const r=cv.getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top};};
+
+function resize2d(){
+  const r=$('pane2d').getBoundingClientRect(); dpr=window.devicePixelRatio||1; cw=r.width; ch=r.height;
+  cv.width=Math.max(1,Math.round(cw*dpr)); cv.height=Math.max(1,Math.round(ch*dpr)); draw2d();
+}
+function fit(){
+  if(!S.canvas||!cw) return;
+  const pad=28, k=Math.min((cw-2*pad)/S.w,(ch-2*pad)/S.h);
+  V.k=k; V.ox=(cw-S.w*k)/2; V.oy=(ch-S.h*k)/2;
+}
+function zoomAt(sx,sy,f){
+  const ix=(sx-V.ox)/V.k, iy=(sy-V.oy)/V.k; V.k=clamp(V.k*f,0.05,30); V.ox=sx-ix*V.k; V.oy=sy-iy*V.k; draw2d();
+}
+function tagBox(text,x,y){
+  ctx.font='12px "Golos Text",sans-serif'; const w=ctx.measureText(text).width+10;
+  ctx.fillStyle='#fff'; ctx.strokeStyle='#B4145A'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.roundRect?ctx.roundRect(x-w/2,y-10,w,20,4):ctx.rect(x-w/2,y-10,w,20); ctx.fill(); ctx.stroke();
+  ctx.fillStyle='#B4145A'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(text,x,y+.5);
+}
+function polyPath(pts,close){ ctx.beginPath(); pts.forEach((q,i)=>{const s=toScreen(q.x,q.y); i?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);}); if(close) ctx.closePath(); }
+function dot(q,color,label){
+  const s=toScreen(q.x,q.y); ctx.fillStyle=color; ctx.beginPath(); ctx.arc(s.x,s.y,5,0,7); ctx.fill();
+  ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.stroke();
+  if(label){ ctx.fillStyle='#13202B'; ctx.font='600 12px "Golos Text",sans-serif'; ctx.textAlign='left'; ctx.textBaseline='alphabetic'; ctx.fillText(label,s.x+8,s.y-8); }
+}
+function segment(a,b,color,label){
+  const A=toScreen(a.x,a.y), B=toScreen(b.x,b.y);
+  ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(B.x,B.y); ctx.stroke();
+  dot(a,color); dot(b,color);
+  if(label) tagBox(label,(A.x+B.x)/2,(A.y+B.y)/2-14);
+}
+
+function draw2d(){
+  if(!cw) return;
+  if(S.needFit){ fit(); S.needFit=false; }
+  ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,cw,ch);
+  if(!S.canvas) return;
+  ctx.save(); ctx.shadowColor='rgba(19,32,43,.25)'; ctx.shadowBlur=14; ctx.fillStyle='#fff'; ctx.fillRect(V.ox,V.oy,S.w*V.k,S.h*V.k); ctx.restore();
+  ctx.imageSmoothingQuality='high'; ctx.drawImage(S.canvas,V.ox,V.oy,S.w*V.k,S.h*V.k);
+  const sc=S.scale;
+
+  ctx.fillStyle='rgba(14,124,123,.5)'; ctx.strokeStyle='#0E7C7B'; ctx.lineWidth=1;
+  for(const r of S.walls){ const a=toScreen(r.x,r.y); ctx.fillRect(a.x,a.y,r.w*V.k,r.h*V.k); ctx.strokeRect(a.x,a.y,r.w*V.k,r.h*V.k); }
+
+  for(const rm of S.rooms){
+    polyPath(rm.pts,true); ctx.fillStyle='rgba(180,20,90,.12)'; ctx.fill(); ctx.strokeStyle='#B4145A'; ctx.lineWidth=1.5; ctx.stroke();
+    if(sc){
+      const c={x:rm.pts.reduce((s,p)=>s+p.x,0)/rm.pts.length,y:rm.pts.reduce((s,p)=>s+p.y,0)/rm.pts.length}, s=toScreen(c.x,c.y);
+      tagBox(rm.name+' '+fmt(polyArea(rm.pts)/sc/sc,1)+' м²',s.x,s.y);
+    }
+  }
+  for(const r of S.rulers) segment(r.a,r.b,'#B4145A',sc?fmt(dist(r.a,r.b)/sc)+' м':'');
+
+  if(S.scalePts.length===2) segment(S.scalePts[0],S.scalePts[1],'#1D4ED8');
+  else if(S.scalePts.length===1) dot(S.scalePts[0],'#1D4ED8');
+
+  if(S.persp.length){
+    polyPath(S.persp,S.persp.length===4); ctx.strokeStyle='#1D4ED8'; ctx.lineWidth=2; ctx.stroke();
+    S.persp.forEach((q,i)=>dot(q,'#1D4ED8',String(i+1)));
+  }
+  if(S.tool==='ruler'&&S.pending){
+    const m=S.mouse; dot(S.pending,'#B4145A');
+    if(m){ segment(S.pending,m,'#B4145A',sc?fmt(dist(S.pending,m)/sc)+' м':''); }
+  }
+  if(S.tool==='room'&&S.roomPts.length){
+    const pts=S.mouse?[...S.roomPts,S.mouse]:S.roomPts;
+    polyPath(pts,false); ctx.strokeStyle='#B4145A'; ctx.lineWidth=2; ctx.setLineDash([6,4]); ctx.stroke(); ctx.setLineDash([]);
+    S.roomPts.forEach((q,i)=>dot(q,i===0?'#13202B':'#B4145A'));
+  }
+  if(S.drag&&S.drag.t==='wall'&&S.mouse){
+    const a=S.drag.a,b=S.mouse,A=toScreen(a.x,a.y),B=toScreen(b.x,b.y);
+    ctx.strokeStyle='#0E7C7B'; ctx.lineWidth=3; ctx.setLineDash([6,4]); ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(B.x,B.y); ctx.stroke(); ctx.setLineDash([]);
+  }
+}
+
+cv.addEventListener('pointerdown',e=>{
+  if(!S.canvas) return;
+  cv.setPointerCapture(e.pointerId);
+  const p=cpos(e), pi=toImg(p.x,p.y);
+  if(e.button===1||e.button===2||S.tool==='pan'){ S.drag={t:'pan',sx:p.x,sy:p.y,ox:V.ox,oy:V.oy}; cv.style.cursor='grabbing'; return; }
+  if(e.button===0) toolClick(pi,p);
+});
+cv.addEventListener('pointermove',e=>{
+  const p=cpos(e); S.mouse=toImg(p.x,p.y);
+  const d=S.drag; if(d&&d.t==='pan'){ V.ox=d.ox+p.x-d.sx; V.oy=d.oy+p.y-d.sy; }
+  draw2d();
+});
+cv.addEventListener('pointerup',()=>{
+  const d=S.drag; S.drag=null; cv.style.cursor=S.tool==='pan'?'grab':'crosshair';
+  if(d&&d.t==='wall') finishWall(d.a,S.mouse);
+  draw2d();
+});
+cv.addEventListener('wheel',e=>{ e.preventDefault(); const p=cpos(e); zoomAt(p.x,p.y,Math.exp(-e.deltaY*0.0015)); },{passive:false});
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+$('zIn').onclick=()=>zoomAt(cw/2,ch/2,1.25);
+$('zOut').onclick=()=>zoomAt(cw/2,ch/2,0.8);
+$('zFit').onclick=()=>{fit();draw2d();};
+new ResizeObserver(resize2d).observe($('pane2d'));
+
+/* ---------- 3D ---------- */
+let R3=null;
+function init3d(){
+  const host=$('host3d');
+  if(typeof THREE==='undefined'){ host.append(el('div','empty3','Не загрузился three.js — проверьте интернет.')); return; }
+  let renderer;
+  try{ renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true}); }
+  catch(err){ host.append(el('div','empty3','WebGL недоступен в этом браузере.')); return; }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+  renderer.shadowMap.enabled=true;
+  host.prepend(renderer.domElement);
+  const scene=new THREE.Scene(); scene.background=new THREE.Color(0xEAEFF1);
+  const camera=new THREE.PerspectiveCamera(40,1,0.1,600);
+  scene.add(new THREE.HemisphereLight(0xffffff,0x9AA7AD,0.8));
+  const sun=new THREE.DirectionalLight(0xffffff,0.7); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048); scene.add(sun);
+  const content=new THREE.Group(); scene.add(content);
+  const mk=c=>new THREE.MeshStandardMaterial({color:c,roughness:.9});
+  R3={renderer,scene,camera,sun,content,labels:[],dirty:true,ext:8,
+    orb:{t:new THREE.Vector3(),theta:.8,phi:.95,dist:20},
+    mats:{side:mk(0xF1F3F3),top:mk(0x13202B),floor:mk(0xD3DCDF),
+      rooms:[0xE7CBD8,0xCBDDE7,0xDAE6CB,0xEADFC6,0xD5CDE8].map(mk)},
+    edge:new THREE.LineBasicMaterial({color:0x9AA8AF}),
+    ruler:new THREE.LineBasicMaterial({color:0xB4145A})};
+
+  // Свои «орбитальные» контроллеры: OrbitControls нет в базовой сборке three.js
+  const el3=renderer.domElement, ptrs=new Map(), o=R3.orb;
+  el3.style.touchAction='none';
+  el3.addEventListener('pointerdown',e=>{el3.setPointerCapture(e.pointerId); ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});});
+  el3.addEventListener('pointermove',e=>{
+    const p=ptrs.get(e.pointerId); if(!p) return;
+    if(ptrs.size===2){
+      const v=[...ptrs.values()], d0=Math.hypot(v[0].x-v[1].x,v[0].y-v[1].y);
+      p.x=e.clientX; p.y=e.clientY;
+      const d1=Math.hypot(v[0].x-v[1].x,v[0].y-v[1].y);
+      if(d1>0) o.dist=clamp(o.dist*d0/d1,2,300);
+    }else{
+      const dx=e.clientX-p.x, dy=e.clientY-p.y; p.x=e.clientX; p.y=e.clientY;
+      if((e.buttons&2)||e.shiftKey){
+        const s=o.dist*0.0015, sn=Math.sin(o.theta), cs=Math.cos(o.theta);
+        o.t.x+=(-cs*dx*s)+(-sn*dy*s); o.t.z+=(sn*dx*s)+(-cs*dy*s);
+      }else{ o.theta-=dx*0.008; o.phi=clamp(o.phi-dy*0.008,0.01,Math.PI/2-0.02); }
+    }
+    R3.dirty=true;
+  });
+  const up=e=>ptrs.delete(e.pointerId);
+  el3.addEventListener('pointerup',up); el3.addEventListener('pointercancel',up);
+  el3.addEventListener('contextmenu',e=>e.preventDefault());
+  el3.addEventListener('wheel',e=>{e.preventDefault(); o.dist=clamp(o.dist*Math.exp(e.deltaY*0.001),2,300); R3.dirty=true;},{passive:false});
+
+  new ResizeObserver(resize3d).observe(host);
+  (function loop(){
+    requestAnimationFrame(loop);
+    if(!R3.dirty) return; R3.dirty=false;
+    const sp=Math.sin(o.phi);
+    camera.position.set(o.t.x+o.dist*sp*Math.sin(o.theta),o.t.y+o.dist*Math.cos(o.phi),o.t.z+o.dist*sp*Math.cos(o.theta));
+    camera.lookAt(o.t);
+    renderer.render(scene,camera);
+    const w=host.clientWidth,h=host.clientHeight;
+    for(const l of R3.labels){
+      const v=l.v.clone().project(camera), vis=v.z>-1&&v.z<1;
+      l.el.style.display=vis?'':'none';
+      l.el.style.transform=`translate(-50%,-50%) translate(${(v.x*.5+.5)*w}px,${(-v.y*.5+.5)*h}px)`;
+    }
+  })();
+}
+function resize3d(){
+  if(!R3) return; const host=$('host3d'), w=host.clientWidth, h=host.clientHeight; if(!w||!h) return;
+  R3.renderer.setSize(w,h); R3.camera.aspect=w/h; R3.camera.updateProjectionMatrix(); R3.dirty=true;
+}
+function view3d(kind){
+  if(!R3) return; const o=R3.orb; o.t.set(0,0,0); o.dist=Math.max(R3.ext*2.4,6);
+  if(kind==='top'){ o.phi=0.01; o.theta=0; } else { o.phi=.95; o.theta=.8; }
+  R3.dirty=true;
+}
+function addLabel(x,y,z,lines){
+  const d=el('div','tag3'); lines.forEach((t,i)=>d.append(i===0&&lines.length>1?el('b',null,t):document.createTextNode(t)));
+  $('labels').append(d); R3.labels.push({v:new THREE.Vector3(x,y,z),el:d});
+}
+function sceneBox(){
+  let b=null; const add=(x,y)=>{ if(!b) b={x0:x,y0:y,x1:x,y1:y}; else { b.x0=Math.min(b.x0,x); b.y0=Math.min(b.y0,y); b.x1=Math.max(b.x1,x); b.y1=Math.max(b.y1,y); } };
+  S.walls.forEach(r=>{add(r.x,r.y);add(r.x+r.w,r.y+r.h);}); S.rooms.forEach(r=>r.pts.forEach(p=>add(p.x,p.y)));
+  return b||{x0:0,y0:0,x1:S.w,y1:S.h};
+}
+function rebuild3d(){
+  if(!R3) return;
+  const g=R3.content;
+  while(g.children.length){ const o=g.children.pop(); o.traverse(n=>{ if(n.geometry) n.geometry.dispose(); }); }
+  R3.labels.forEach(l=>l.el.remove()); R3.labels=[];
+  if(!S.canvas||!S.scale){ R3.dirty=true; return; }
+  const sc=S.scale, H=wallH(), b=sceneBox(), cx=(b.x0+b.x1)/2, cy=(b.y0+b.y1)/2;
+  const X=px=>(px-cx)/sc, Z=py=>(py-cy)/sc;
+  const fw=(b.x1-b.x0)/sc+2, fd=(b.y1-b.y0)/sc+2;
+  R3.ext=Math.max(fw,fd);
+
+  const floor=new THREE.Mesh(new THREE.PlaneGeometry(fw,fd).rotateX(-Math.PI/2),R3.mats.floor);
+  floor.position.y=-0.002; floor.receiveShadow=true; g.add(floor);
+
+  if($('chkPlan').checked){
+    const tex=new THREE.CanvasTexture(S.canvas); tex.minFilter=THREE.LinearFilter;
+    const m=new THREE.Mesh(new THREE.PlaneGeometry(S.w/sc,S.h/sc).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({map:tex,transparent:true,opacity:.6}));
+    m.position.set(X(S.w/2),0.004,Z(S.h/2)); g.add(m);
+  }
+
+  S.rooms.forEach((rm,i)=>{
+    const sh=new THREE.Shape(); rm.pts.forEach((p,j)=>{ const x=X(p.x), z=Z(p.y); j?sh.lineTo(x,-z):sh.moveTo(x,-z); });
+    const mat=R3.mats.rooms[i%R3.mats.rooms.length].clone(); mat.side=THREE.DoubleSide;
+    const m=new THREE.Mesh(new THREE.ShapeGeometry(sh).rotateX(-Math.PI/2),mat); m.position.y=0.01; m.receiveShadow=true; g.add(m);
+    const c={x:rm.pts.reduce((s,p)=>s+p.x,0)/rm.pts.length,y:rm.pts.reduce((s,p)=>s+p.y,0)/rm.pts.length};
+    addLabel(X(c.x),0.05,Z(c.y),[rm.name,fmt(polyArea(rm.pts)/sc/sc,1)+' м²']);
+  });
+
+  const mats=[R3.mats.side,R3.mats.side,R3.mats.top,R3.mats.side,R3.mats.side,R3.mats.side];
+  S.walls.forEach(r=>{
+    const horiz=r.w>=r.h, hh=H+(horiz?0:0.002); // вертикальные чуть выше — чтобы не мерцали верхние грани в углах
+    const geo=new THREE.BoxGeometry(r.w/sc,hh,r.h/sc), m=new THREE.Mesh(geo,mats);
+    m.position.set(X(r.x+r.w/2),hh/2,Z(r.y+r.h/2)); m.castShadow=true; m.receiveShadow=true;
+    m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo),R3.edge)); g.add(m);
+  });
+
+  S.rulers.forEach(r=>{
+    const geo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(X(r.a.x),0.05,Z(r.a.y)),new THREE.Vector3(X(r.b.x),0.05,Z(r.b.y))]);
+    g.add(new THREE.Line(geo,R3.ruler));
+    addLabel(X((r.a.x+r.b.x)/2),0.1,Z((r.a.y+r.b.y)/2),[fmt(dist(r.a,r.b)/sc)+' м']);
+  });
+
+  const st=wallStats();
+  if(st){
+    addLabel(X((st.b.x0+st.b.x1)/2),0.05,Z(st.b.y0)-0.6,[fmt(st.W)+' м']);
+    addLabel(X(st.b.x0)-0.7,0.05,Z((st.b.y0+st.b.y1)/2),[fmt(st.D)+' м']);
+  }
+
+  const e=R3.ext/2+2, cam=R3.sun.shadow.camera;
+  cam.left=-e; cam.right=e; cam.top=e; cam.bottom=-e; cam.near=0.5; cam.far=e*6; cam.updateProjectionMatrix();
+  R3.sun.position.set(e*.6,e*1.6,e*.5);
+  if(S.needView3d){ view3d('iso'); S.needView3d=false; }
+  R3.dirty=true;
+}
+
+/* ---------- Замеры, списки, статусы ---------- */
+function wallStats(){
+  if(!S.scale||!S.walls.length) return null;
+  let len=0,b=null;
+  for(const r of S.walls){
+    len+=Math.max(r.w,r.h);
+    if(!b) b={x0:r.x,y0:r.y,x1:r.x+r.w,y1:r.y+r.h};
+    else{ b.x0=Math.min(b.x0,r.x); b.y0=Math.min(b.y0,r.y); b.x1=Math.max(b.x1,r.x+r.w); b.y1=Math.max(b.y1,r.y+r.h); }
+  }
+  return {b,len:len/S.scale,W:(b.x1-b.x0)/S.scale,D:(b.y1-b.y0)/S.scale};
+}
+function delBtn(fn){ const b=el('button','x','×'); b.setAttribute('aria-label','Удалить'); b.onclick=fn; return b; }
+function renderLists(){
+  const box=$('measures'), sc=S.scale; box.textContent='';
+  S.rulers.forEach((r,i)=>{
+    const row=el('div','item'); row.append(el('span','lab','Линейка'),el('span','val',sc?fmt(dist(r.a,r.b)/sc)+' м':'—'),delBtn(()=>{S.rulers.splice(i,1);changed();}));
+    box.append(row);
+  });
+  S.rooms.forEach((r,i)=>{
+    const row=el('div','item'), inp=el('input'); inp.type='text'; inp.value=r.name; inp.setAttribute('aria-label','Название комнаты');
+    inp.oninput=()=>{r.name=inp.value; draw2d(); rebuild3d();};
+    row.append(inp,el('span','val',sc?fmt(polyArea(r.pts)/sc/sc,1)+' м²':'—'),delBtn(()=>{S.rooms.splice(i,1);changed();}));
+    box.append(row);
+  });
+  const sum=$('summary'); sum.textContent='';
+  const line=(a,b)=>{const d=el('div'); d.append(el('span',null,a),el('span',null,b)); sum.append(d);};
+  const st=wallStats();
+  if(st){ line('Габариты',fmt(st.W)+' × '+fmt(st.D)+' м'); line('Длина стен (≈)',fmt(st.len,1)+' м'); }
+  if(sc&&S.rooms.length) line('Площадь комнат',fmt(S.rooms.reduce((s,r)=>s+polyArea(r.pts),0)/sc/sc,1)+' м²');
+}
+function updateUI(){
+  const has=!!S.canvas, set=(id,t)=>{$(id).textContent=t;};
+  set('stLoad',has?S.w+'×'+S.h:'—');
+  set('stPersp',S.persp.length+'/4');
+  set('stScale',S.scale?fmt(S.scale,1)+' px/м':'не задан');
+  set('stWalls',S.walls.length?S.walls.length+' шт.':'—');
+  set('stMeasure',(S.rooms.length+S.rulers.length)?String(S.rooms.length+S.rulers.length):'—');
+  $('step1').classList.toggle('done',has); $('step3').classList.toggle('done',!!S.scale);
+  $('step4').classList.toggle('done',S.walls.length>0); $('step5').classList.toggle('done',S.rooms.length+S.rulers.length>0);
+  $('empty').hidden=has;
+  $('btnJson').disabled=!(has&&S.scale); $('btnPng').disabled=!R3||!has;
+}
+function changed(){ updateUI(); renderLists(); draw2d(); S.needView3d=S.needView3d||false; rebuild3d(); }
+
+/* ---------- Кнопки ---------- */
+document.querySelectorAll('[data-tool]').forEach(b=>b.addEventListener('click',()=>setTool(b.dataset.tool)));
+$('btnOpen').onclick=()=>$('file').click();
+$('file').onchange=e=>{ loadFile(e.target.files[0]); e.target.value=''; };
+$('btnDemo').onclick=()=>{ S.needView3d=true; loadDemo(); };
+$('inPage').onchange=async()=>{ if(!S.pdf) return; try{ await renderPdfPage(clamp(parseInt($('inPage').value)||1,1,S.pdf.numPages)); }catch(err){ note('Не удалось открыть страницу.'); } };
+$('btnWarp').onclick=applyPerspective;
+$('btnPerspReset').onclick=()=>{ S.persp=[]; updateUI(); draw2d(); };
+$('btnScale').onclick=()=>{
+  if(S.scalePts.length<2) return note('Сначала отметьте два конца отрезка на плане.');
+  const m=parseFloat($('inScaleM').value); if(!(m>0)) return note('Введите длину отрезка в метрах.');
+  S.scale=dist(S.scalePts[0],S.scalePts[1])/m; S.needView3d=true; changed(); setTool('pan',true);
+  note('Масштаб задан: '+fmt(S.scale,1)+' px на метр.');
+};
+$('inThr').oninput=()=>{ $('thrVal').textContent=$('inThr').value; };
+$('btnDetect').onclick=()=>{
+  if(!S.canvas) return note('Сначала загрузите план.');
+  if(!S.scale) return note('Сначала задайте масштаб (шаг 3).');
+  note('Ищу стены…');
+  setTimeout(()=>{
+    const cm=id=>Math.max(1,Math.round((parseFloat($(id).value)||1)/100*S.scale)), t0=performance.now();
+    S.walls=detectWalls(S.gray,S.w,S.h,{thr:+$('inThr').value,adaptive:$('inAdapt').checked,minThick:cm('inMin'),maxThick:cm('inMax'),minLen:cm('inLen'),gap:2});
+    S.needView3d=true; changed();
+    note(S.walls.length?'Найдено стен: '+S.walls.length+' ('+Math.round(performance.now()-t0)+' мс). Ошибки можно поправить кнопками «Добавить» и «Удалить».':'Стены не найдены. Попробуйте изменить порог яркости или включить режим для фото.');
+  },30);
+};
+$('btnClearWalls').onclick=()=>{ S.walls=[]; changed(); };
+$('btnCloseRoom').onclick=finishRoom;
+$('inH').oninput=rebuild3d; $('chkPlan').onchange=rebuild3d;
+$('btnIso').onclick=()=>view3d('iso'); $('btnTop').onclick=()=>view3d('top');
+
+function download(blob,name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
+$('btnJson').onclick=()=>{
+  const sc=S.scale, m=v=>+(v/sc).toFixed(3);
+  const data={
+    generator:'Обмер', source:S.name, px_per_meter:+sc.toFixed(3), ceiling_height_m:wallH(),
+    walls:S.walls.map(r=>({x:m(r.x),y:m(r.y),width:m(r.w),depth:m(r.h)})),
+    rooms:S.rooms.map(r=>({name:r.name,area_m2:+(polyArea(r.pts)/sc/sc).toFixed(2),perimeter_m:m(polyPerim(r.pts)),polygon:r.pts.map(p=>[m(p.x),m(p.y)])})),
+    rulers:S.rulers.map(r=>({length_m:m(dist(r.a,r.b))}))
+  };
+  download(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),'obmer-plan.json');
+};
+$('btnPng').onclick=()=>{ if(!R3) return; R3.renderer.render(R3.scene,R3.camera); R3.renderer.domElement.toBlob(b=>b&&download(b,'obmer-3d.png')); };
+
+document.querySelectorAll('.tabs [data-v]').forEach(b=>b.addEventListener('click',()=>{
+  $('stage').dataset.view=b.dataset.v;
+  document.querySelectorAll('.tabs [data-v]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+  setTimeout(()=>{resize2d();resize3d();},0);
+}));
+
+window.addEventListener('dragover',e=>e.preventDefault());
+window.addEventListener('drop',e=>{ e.preventDefault(); loadFile(e.dataTransfer.files[0]); });
+window.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT') return;
+  if(e.key==='Escape'){ S.pending=null; S.roomPts=[]; S.drag=null; draw2d(); }
+  if(e.key==='Enter'&&S.tool==='room') finishRoom();
+});
+
+init3d(); setTool('pan',true); updateUI(); renderLists();
+</script>
+</body>
+</html>
